@@ -9,12 +9,12 @@ import (
 	"glock/src/treaty"
 	"log"
 	"net"
-	"time"
+	"strconv"
 )
 
 func tcpHandler(conn *net.Conn) {
 	reader := bufio.NewReader(*conn)
-	ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 	for {
 		d, err := treaty.Decode(reader)
@@ -30,40 +30,39 @@ func processMessage(ctx context.Context, conn *net.Conn, d []byte) {
 	// Check data integrity
 	if len(d) == 12 {
 		// get lock structure
-		gLock := model.GlobalLockSet[d[0]]
+		// gLock := model.GlobalLockSet[d[0]]
 
-		var id uint64
-		var rd uint16
-		_ = binary.Read(bytes.NewReader(d[4:]), binary.LittleEndian, &id)
-		_ = binary.Read(bytes.NewReader(d[2:4]), binary.LittleEndian, &rd)
+		if d[1] == 0 {
+			var id uint64
+			var rd uint16
+			_ = binary.Read(bytes.NewReader(d[4:]), binary.LittleEndian, &id)
+			_ = binary.Read(bytes.NewReader(d[2:4]), binary.LittleEndian, &rd)
 
-		if gLock == nil {
-			d[1] = 1
-			(*conn).Write(d)
-			return
-		} else {
-			// If the data body is 0, it means that the requester wants to acquire the lock
-			if d[1] == 0 {
-				if gLock.Id == id && gLock.Rd == uint32(rd) {
+			v := strconv.Itoa(int(id)) + strconv.Itoa(int(rd))
+
+			val, ok := model.GlobalLockMap.Load(d[0])
+			if ok {
+				s, _ := val.(string)
+				if s == v {
 					d[1] = 1
 					(*conn).Write(d)
 					return
 				} else {
-					select {
-					case <-ctx.Done():
-						log.Println("Failed to acquire lock, err:%V", ctx.Err())
-						(*conn).Write(d)
-					case <-gLock.C:
-						gLock.Id = id
-						gLock.Rd = uint32(rd)
-						d[1] = 1
-						(*conn).Write(d)
-					}
+					<-model.GlobalLockChan
+					model.GlobalLockMap.Store(d[0], v)
+					d[1] = 1
+					(*conn).Write(d)
 					return
 				}
 			} else {
-				gLock.C <- true
+				model.GlobalLockMap.Store(d[0], v)
+				d[1] = 1
+				(*conn).Write(d)
+				return
 			}
+		} else {
+			model.GlobalLockChan <- true
+			return
 		}
 	} else {
 		log.Println("wrong message body")

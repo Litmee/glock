@@ -7,6 +7,10 @@ import (
 // Decode message decoding
 func Decode(r *bufio.Reader) ([]byte, error) {
 
+	_, err := r.Peek(1)
+	if err != nil {
+		return nil, err
+	}
 	// Identification parameters used to solve TCP subcontract problems
 	var sign byte = 0
 
@@ -28,7 +32,7 @@ func Decode(r *bufio.Reader) ([]byte, error) {
 	}
 
 	// read message entity
-	_, err := r.Read(s)
+	_, err = r.Read(s)
 	if err != nil {
 		return nil, err
 	}
