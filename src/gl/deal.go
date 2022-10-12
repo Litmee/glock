@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"time"
 )
 
 func tcpHandler(conn *net.Conn) {
@@ -22,7 +23,8 @@ func tcpHandler(conn *net.Conn) {
 			log.Println("accept failed, err:%V", err)
 			break
 		}
-		go processMessage(ctx, conn, d)
+		ttx, _ := context.WithTimeout(ctx, time.Second*5)
+		go processMessage(ttx, conn, d)
 	}
 }
 
